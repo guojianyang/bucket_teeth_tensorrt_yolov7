@@ -104,7 +104,7 @@ $(objdir)/%.cu.mk : $(srcdir)/%.cu
 
 # 定义清理指令
 clean :
-	@rm -rf $(objdir) $(workdir)/$(name) $(workdir)/*.trtmodel
+	@rm -rf $(objdir) $(workdir)/$(name)
 	@rm -rf $(workdir)/image-draw.jpg $(workdir)/input-image.jpg $(workdir)/car-pytorch.jpg
 
 # 防止符号被当做文件
