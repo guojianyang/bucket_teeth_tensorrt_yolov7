@@ -276,6 +276,7 @@ vector<unsigned char> load_file(const string& file){
     return data;
 }
 
+// 后处理过程decode和nms未经过cuda加速
 void inference(){
 
     TRTLogger logger;
@@ -450,9 +451,10 @@ void inference(){
         cv::rectangle(image, cv::Point(left-3, top-33), cv::Point(left + text_width, top), color, -1);
         cv::putText(image, caption, cv::Point(left, top-5), 0, 1, cv::Scalar::all(0), 2, 16);
     }
-    cv::imwrite("image-draw_guojian_000252.jpg", image);
+    cv::imwrite("inference.jpg", image);
 }
 
+// 后处理过程decode和nms经过cuda加速
 void inference_cuda_decode_nms(){
 
     TRTLogger logger;
@@ -614,12 +616,149 @@ void inference_cuda_decode_nms(){
     checkCudaErrors(cudaFree(input_data_device));
     checkCudaErrors(cudaFree(output_data_device));
 }
+
+// 后处理过程decode和nms经过cuda加速，并进行tensor切换
+void inference_cuda_decode_nms_tensor(){
+
+    TRTLogger logger;
+    auto engine_data = load_file("ptq_yolov7-w6_trained.trtmodel");
+    auto runtime   = make_nvshared(nvinfer1::createInferRuntime(logger));
+    auto engine = make_nvshared(runtime->deserializeCudaEngine(engine_data.data(), engine_data.size()));
+    if(engine == nullptr){
+        printf("Deserialize cuda engine failed.\n");
+        runtime->destroy();
+        return;
+    }
+    if(engine->getNbBindings() != 2){
+        printf("你的onnx导出有问题，必须是1个输入和1个输出，你这明显有：%d个输出.\n", engine->getNbBindings() - 1);
+        return;
+    }
+    cudaStream_t stream_0 = nullptr;
+    checkCudaErrors(cudaStreamCreate(&stream_0));
+    auto execution_context = make_nvshared(engine->createExecutionContext());
+
+    //2.创建的输入数据的host和device内存
+    int input_batch = 1;
+    int input_channel = 3;
+    int input_height = 640;
+    int input_width = 640;
+    int input_numel = input_batch * input_channel * input_height * input_width;
+    auto input = std::make_shared<TRT::Tensor>(input_batch, input_channel, input_height, input_width, TRT::DataType::Float, nullptr,CURRENT_DEVICE_ID);
+    input->set_stream(stream_0,true);   
+
+    //3.加载图片，并进行相关的仿射变换，并将图片从host to device
+    auto image = cv::imread("frame_000250.jpg");
+    float scale_x = input_width / (float)image.cols;
+    float scale_y = input_height / (float)image.rows;
+    float scale = std::min(scale_x, scale_y);
+    float i2d[6], d2i[6];
+    i2d[0] = scale;  i2d[1] = 0;  i2d[2] = (-scale * image.cols + input_width + scale  - 1) * 0.5;
+    i2d[3] = 0;  i2d[4] = scale;  i2d[5] = (-scale * image.rows + input_height + scale - 1) * 0.5;
+
+    cv::Mat m2x3_i2d(2, 3, CV_32F, i2d);
+    cv::Mat m2x3_d2i(2, 3, CV_32F, d2i);
+    cv::invertAffineTransform(m2x3_i2d, m2x3_d2i);
+
+    cv::Mat input_image(input_height, input_width, CV_8UC3);
+    cv::warpAffine(image, input_image, m2x3_i2d, input_image.size(), cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar::all(114));
+    cv::imwrite("input-image_frame_000250.jpg", input_image);
+
+    int image_area = input_image.cols * input_image.rows;
+    unsigned char* pimage = input_image.data;
+    float* phost_b = input->cpu<float>() + image_area * 0; // trt_tensor取代
+    float* phost_g = input->cpu<float>() + image_area * 1; // trt_tensor取代
+    float* phost_r = input->cpu<float>() + image_area * 2; // trt_tensor取代
+    for(int i = 0; i < image_area; ++i, pimage += 3){
+        *phost_r++ = pimage[0] / 255.0f;
+        *phost_g++ = pimage[1] / 255.0f;
+        *phost_b++ = pimage[2] / 255.0f;
+    }
+    auto start_time = std::chrono::high_resolution_clock::now();
+    input->to_gpu(true); // trt_tensor取代
+
+    // 创建输出数据的host和device内存
+    auto output_dims = engine->getBindingDimensions(1);
+    int output_numbox = output_dims.d[1];
+    int output_numprob = output_dims.d[2];
+    int num_classes = output_numprob - 5;
+    std::vector<int> egnine_output_dims={input->batch(),output_dims.d[1], output_dims.d[2]};
+    auto output = make_shared<TRT::Tensor>(egnine_output_dims, TRT::DataType::Float,nullptr,CURRENT_DEVICE_ID);
+    output->set_stream(stream_0, true);    
+
+    // 明确当前推理时，使用的数据输入大小，并使用enqueueV2进行推理。
+    auto input_dims = engine->getBindingDimensions(0);
+    input_dims.d[0] = input_batch;
+
+    execution_context->setBindingDimensions(0, input_dims);
+    float* bindings[] = {input->gpu<float>(), output->gpu<float>()}; // trt_tensor取代
+    bool success      = execution_context->enqueueV2((void**)bindings, stream_0, nullptr);
+    checkCudaErrors(cudaStreamSynchronize(stream_0));
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+    printf("纯推理时间: %d us\n", duration.count());
+    printf("推理完成!!!\n");
+    
+    vector<vector<float>> bboxes;
+    float confidence_threshold = 0.25;
+    float nms_threshold = 0.45;
+    printf("output_numbox:%d \n", output_numbox); 
+    //构建engine时，9个输出屏蔽了8个，只保留“output”，且在inference时，通过打印检测输出都是有效数据，接下来对输出做合理的后处理
+    std::vector<int> affine_dims = {6};
+    std::vector<int> parray_dims= {1+1024*7};
+    auto invert_affine_matrix = make_shared<TRT::Tensor>(affine_dims, TRT::DataType::Float ,nullptr, CURRENT_DEVICE_ID);
+    auto parray = make_shared<TRT::Tensor>(parray_dims, TRT::DataType::Float, nullptr, CURRENT_DEVICE_ID);
+    invert_affine_matrix->set_stream(stream_0, true);
+    parray->set_stream(stream_0, true);
+    float* invert_affine_matrix_host = invert_affine_matrix->cpu<float>();
+    for(int i = 0; i < 6; i++){
+        if(d2i[i] != NULL){
+            invert_affine_matrix_host[i] = d2i[i];
+        }
+    }
+    int num_boxes = output_numbox;
+    int num_class = num_classes;
+    float con_threshold = 0.25;
+    float max_objects = 1024;
+    invert_affine_matrix->to_gpu(true);
+    CUDATools::decode_kernel_invoker(output->gpu<float>(), num_boxes, num_class, con_threshold, invert_affine_matrix->gpu<float>(), parray->gpu<float>(), max_objects,stream_0);
+    checkCudaErrors(cudaStreamSynchronize(stream_0));
+    CUDATools::nms_kernel_invoker(parray->gpu<float>(), nms_threshold, max_objects, stream_0);
+    parray->to_cpu(true);
+    checkCudaErrors(cudaStreamSynchronize(stream_0));
+
+    for(int i = 0;  i < num_boxes; i++){
+        //将keep==0的值全部过滤掉
+        float* item  = parray->cpu<float>() + 1 + i * 7;
+        if(int(item[6]) != 1){
+            continue;
+        }
+        float left = item[0];
+        float top = item[1];
+        float right = item[2];
+        float bottom = item[3];
+        float con_threshold = item[4];
+        int label = int(item[5]);
+        printf("label %d = %d \n", i, label);
+        cv::Scalar color;
+        tie(color[0], color[1], color[2]) = random_color(label);
+        cv::rectangle(image, cv::Point(left,top), cv::Point(right, bottom), color, 2); // "1"代表框粗细
+        auto name = theethlabels[label];
+        auto caption = cv::format("%.2f",con_threshold);
+        int text_width = cv::getTextSize(caption, 0, 1, 2, nullptr).width + 10;
+        cv::rectangle(image, cv::Point(left-3, top-33), cv::Point(left+text_width, top), color, -1);
+        cv::putText(image, caption, cv::Point(left, top-5), 0, 1, cv::Scalar::all(0), 2, 16);
+    }
+    cv::imwrite("inference_cuda_decode_nms_tensor.jpg", image);
+    printf("已生成 inference_cuda_decode_nms_tensor.jpg, 储存在/workspace下\n ");
+}
 int main(){
     if(!build_model()){
         return -1;
     }
-    inference();
-    inference_cuda_decode_nms();
+    // inference();
+    // inference_cuda_decode_nms();
+    inference_cuda_decode_nms_tensor();
     printf("inference 程序完成, main 结束返回！！！ \n");
     return 0;
 }
