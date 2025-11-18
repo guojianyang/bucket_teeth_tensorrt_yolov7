@@ -2,6 +2,15 @@
 =======
 斗齿检测模型优化部署
 
+## 硬件：
+- jetson AGX-Xavier （16G内存+32G系统盘+512G固态硬盘，系统装在固态硬盘上）
+## 软件配置（仅限于tag v1.0-v1.3）：
+- JetPack 5.1.5[L4T 35.6.1]
+- CUDA==10.2
+- CUDNN==8.2.1
+- TensorRT==8.2.1.9
+- OpenCV==4.2
+
 
 # 备注：
 1. 利用tensorrt构建engine引擎时，`ptq_yolov7-w6_trained.onnx`模型的输出存在9个输出的情况，但是我们只需其中第一个输出，需要屏蔽其他输出后再生成引擎[Release-v1.0](https://github.com/guojianyang/bucket_teeth_tensorrt_yolov7/tree/v1.0)；
