@@ -4,11 +4,12 @@ workdir   := workspace
 srcdir    := src
 objdir    := objs
 stdcpp    := c++11
-cuda_home := /home/guo/miniconda3/envs/trtpy/lib/python3.10/site-packages/trtpy/trt8cuda102cudnn8
-syslib    := /home/guo/miniconda3/envs/trtpy/lib/python3.10/site-packages/trtpy/lib
-cpp_pkg   := /home/guo/miniconda3/envs/trtpy/lib/python3.10/site-packages/trtpy/cpp-packages
+# cuda_home := /home/guo/miniconda3/envs/trtpy/lib/python3.7/site-packages/trtpy/trt8cuda115cudnn8
+cuda_home := /home/guo/miniconda3/envs/trtpy/lib/python3.7/site-packages/trtpy/trt1001cuda122cudnn897
+syslib    := /home/guo/miniconda3/envs/trtpy/lib/python3.7/site-packages/trtpy/lib
+cpp_pkg   := /home/guo/miniconda3/envs/trtpy/lib/python3.7/site-packages/trtpy/cpp-packages
 cuda_arch := 
-nvcc      := /usr/local/cuda-11.4/bin/nvcc -ccbin=$(cc)
+nvcc      := $(cuda_home)/bin/nvcc -ccbin=$(cc)
 
 # 定义cpp的路径查找和依赖项mk文件
 cpp_srcs := $(shell find $(srcdir) -name "*.cpp")
@@ -25,7 +26,7 @@ cu_mk   := $(cu_objs:.cu.o=.cu.mk)
 # 定义opencv和cuda需要用到的库文件
 link_cuda      := cudart cudnn
 link_trtpro    := 
-link_tensorRT  := nvinfer nvinfer_plugin
+link_tensorRT  := nvinfer nvinfer_plugin nvonnxparser
 link_opencv    := opencv_core opencv_imgproc opencv_imgcodecs opencv_gapi opencv_highgui opencv_videoio
 link_sys       := stdc++ dl protobuf
 link_librarys  := $(link_cuda) $(link_tensorRT) $(link_sys) $(link_opencv)
@@ -39,7 +40,7 @@ include_paths := src              \
 	$(cpp_pkg)/opencv4.2/include  \
 	$(cuda_home)/include/protobuf
 
-# 定义库文件路径，只需要写路径，不需要写-L
+# 定义库文件路径，只需要写路径，不需要写- L
 library_paths := $(cuda_home)/lib64 $(syslib) $(cpp_pkg)/opencv4.2/lib
 
 # 把library path给拼接为一个字符串，例如a b c => a:b:c
@@ -56,8 +57,8 @@ link_librarys := $(foreach item,$(link_librarys),-l$(item))
 # 如果是其他显卡，请修改-gencode=arch=compute_75,code=sm_75为对应显卡的能力
 # 显卡对应的号码参考这里：https://developer.nvidia.com/zh-cn/cuda-gpus#compute
 # 如果是 jetson nano，提示找不到-m64指令，请删掉 -m64选项。不影响结果
-cpp_compile_flags := -std=$(stdcpp) -w -g -O0 -fPIC -fopenmp -pthread
-cu_compile_flags  := -std=$(stdcpp) -w -g -O0 $(cuda_arch) -Xcompiler "$(cpp_compile_flags)"
+cpp_compile_flags := -std=$(stdcpp) -w -g -O0 -m64 -fPIC -fopenmp -pthread
+cu_compile_flags  := -std=$(stdcpp) -w -g -O0 -m64 $(cuda_arch) -Xcompiler "$(cpp_compile_flags)"
 link_flags        := -pthread -fopenmp -Wl,-rpath='$$ORIGIN'
 
 cpp_compile_flags += $(include_paths)
@@ -112,3 +113,10 @@ clean :
 
 # 导出依赖库路径，使得能够运行起来
 export LD_LIBRARY_PATH:=$(library_path_export)
+
+
+
+
+# ~/trt_HPC/recite_pro/bucket_teeth_tensorrt_yolov7_trt10/src/onnx
+# onnx-data.pb.h--》onnx_pb.h
+# 

@@ -1,10 +1,13 @@
-#include <stdio.h>
+// 在文件开头添加这些预处理器指令
+// #define __CUDA_API_VERSION_INTERNAL
+
 #include <cuda_runtime.h>
+#include <cuda.h>
+#include <stdio.h>
 #include <string>
 #include <vector>
 #include <opencv2/opencv.hpp>
 #include <cstring>
-#include <cuda.h>
 #include <cuda_tools.hpp>
 
 
