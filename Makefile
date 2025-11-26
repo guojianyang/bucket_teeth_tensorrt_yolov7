@@ -4,11 +4,11 @@ workdir   := workspace
 srcdir    := src
 objdir    := objs
 stdcpp    := c++11
-cuda_home := /home/guo/miniconda3/envs/trtpy/lib/python3.10/site-packages/trtpy/trt8cuda102cudnn8
-syslib    := /home/guo/miniconda3/envs/trtpy/lib/python3.10/site-packages/trtpy/lib
-cpp_pkg   := /home/guo/miniconda3/envs/trtpy/lib/python3.10/site-packages/trtpy/cpp-packages
+cuda_home := /home/guo/miniconda3/envs/trtpy/lib/python3.7/site-packages/trtpy/trt8cuda115cudnn8
+syslib    := /home/guo/miniconda3/envs/trtpy/lib/python3.7/site-packages/trtpy/lib
+cpp_pkg   := /home/guo/miniconda3/envs/trtpy/lib/python3.7/site-packages/trtpy/cpp-packages
 cuda_arch := 
-nvcc      := /usr/local/cuda-11.4/bin/nvcc -ccbin=$(cc)
+nvcc      := $(cuda_home)/bin/nvcc -ccbin=$(cc)
 
 # 定义cpp的路径查找和依赖项mk文件
 cpp_srcs := $(shell find $(srcdir) -name "*.cpp")
@@ -56,8 +56,8 @@ link_librarys := $(foreach item,$(link_librarys),-l$(item))
 # 如果是其他显卡，请修改-gencode=arch=compute_75,code=sm_75为对应显卡的能力
 # 显卡对应的号码参考这里：https://developer.nvidia.com/zh-cn/cuda-gpus#compute
 # 如果是 jetson nano，提示找不到-m64指令，请删掉 -m64选项。不影响结果
-cpp_compile_flags := -std=$(stdcpp) -w -g -O0 -fPIC -fopenmp -pthread
-cu_compile_flags  := -std=$(stdcpp) -w -g -O0 $(cuda_arch) -Xcompiler "$(cpp_compile_flags)"
+cpp_compile_flags := -std=$(stdcpp) -w -g -O0 -m64 -fPIC -fopenmp -pthread
+cu_compile_flags  := -std=$(stdcpp) -w -g -O0 -m64 $(cuda_arch) -Xcompiler "$(cpp_compile_flags)"
 link_flags        := -pthread -fopenmp -Wl,-rpath='$$ORIGIN'
 
 cpp_compile_flags += $(include_paths)
