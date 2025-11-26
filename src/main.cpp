@@ -468,14 +468,6 @@ void inference_cuda_decode_nms_tensor_cudaGraph(){
     cudaGraph_t graph;
     cudaGraphExec_t instance;
 
-    // // 在graph创建完成后，先进行warm up
-    // for(int i = 0; i < 5; i++){
-    //     success = execution_context->enqueueV3(stream_0);
-    //     checkCudaErrors(cudaStreamSynchronize(stream_0));
-    //     printf("warm up 第 %d 次推理完成!!!\n", i);
-    // }
-
-
     // 开始记录graph
     checkCudaErrors(cudaStreamBeginCapture(stream_0, cudaStreamCaptureModeGlobal));
 
@@ -487,7 +479,7 @@ void inference_cuda_decode_nms_tensor_cudaGraph(){
     checkCudaErrors(cudaStreamEndCapture(stream_0, &graph));
     checkCudaErrors(cudaGraphInstantiate(&instance, graph, NULL, NULL, 0));
 
-    for(int i = 0; i < 50; i++){
+    for(int i = 0; i < 5; i++){
         checkCudaErrors(cudaGraphLaunch(instance, stream_0)); // 使用graph执行
         checkCudaErrors(cudaStreamSynchronize(stream_0));
         printf("warm up 第 %d 次推理完成!!!\n", i);
