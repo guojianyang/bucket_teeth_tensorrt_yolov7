@@ -352,7 +352,8 @@ objs/main.cpp.o: src/main.cpp /usr/include/stdc-predef.h \
  /home/guo/miniconda3/envs/trtpy/lib/python3.7/site-packages/trtpy/cpp-packages/opencv4.2/include/opencv2/video.hpp \
  /home/guo/miniconda3/envs/trtpy/lib/python3.7/site-packages/trtpy/cpp-packages/opencv4.2/include/opencv2/video/tracking.hpp \
  /home/guo/miniconda3/envs/trtpy/lib/python3.7/site-packages/trtpy/cpp-packages/opencv4.2/include/opencv2/video/background_segm.hpp \
- src/decode_nms.hpp src/trt_tensor.hpp /usr/include/c++/9/fstream \
+ src/decode_nms.hpp src/trt_tensor.hpp src/monopoly_allocator.hpp \
+ /usr/include/c++/9/condition_variable /usr/include/c++/9/fstream \
  /usr/include/x86_64-linux-gnu/c++/9/bits/basic_file.h \
  /usr/include/x86_64-linux-gnu/c++/9/bits/c++io.h \
  /usr/include/c++/9/bits/fstream.tcc /usr/include/unistd.h \
